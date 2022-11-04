@@ -10,10 +10,10 @@ type BType uint8
 type BValue interface{}
 
 const (
-	BSTR  BType = 0x01
-	BINT  BType = 0x02
-	BLIST BType = 0x03
-	BDICT BType = 0x04
+	BSTR BType = iota
+	BINT
+	BLIST
+	BDICT
 )
 
 var (
