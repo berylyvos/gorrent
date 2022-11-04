@@ -93,6 +93,76 @@ func (o *BObject) Bencode(w io.Writer) int {
 	return wLen
 }
 
+func Parse(r io.Reader) (*BObject, error) {
+	br, ok := r.(*bufio.Reader)
+	if !ok {
+		br = bufio.NewReader(r)
+	}
+	bn, err := br.Peek(1)
+	if err != nil {
+		return nil, err
+	}
+	b := bn[0]
+	bo := &BObject{}
+	switch {
+	case checkNum(b):
+		// parse str
+		bo.typ_ = BSTR
+		bo.val_, err = DecodeString(br)
+		if err != nil {
+			return nil, err
+		}
+	case b == 'i':
+		// parse int
+		bo.typ_ = BINT
+		bo.val_, err = DecodeInt(br)
+		if err != nil {
+			return nil, err
+		}
+	case b == 'l':
+		// parse list
+		bo.typ_ = BLIST
+		var list []*BObject
+		_, _ = br.ReadByte()
+		for {
+			if p, _ := br.Peek(1); p[0] == 'e' {
+				_, _ = br.ReadByte()
+				break
+			}
+			item, err := Parse(br)
+			if err != nil {
+				return nil, err
+			}
+			list = append(list, item)
+		}
+		bo.val_ = list
+	case b == 'd':
+		// parse dict
+		bo.typ_ = BDICT
+		bMap := make(map[string]*BObject)
+		_, _ = br.ReadByte()
+		for {
+			if p, _ := br.Peek(1); p[0] == 'e' {
+				_, _ = br.ReadByte()
+				break
+			}
+			key, err := DecodeString(br)
+			if err != nil {
+				return nil, err
+			}
+			val, err := Parse(br)
+			if err != nil {
+				return nil, err
+			}
+			bMap[key] = val
+		}
+		bo.val_ = bMap
+	default:
+		return nil, ErrIvd
+	}
+	return bo, nil
+}
+
 func checkNum(data byte) bool {
 	return data >= '0' && data <= '9'
 }
