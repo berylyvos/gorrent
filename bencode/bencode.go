@@ -89,7 +89,7 @@ func (o *BObject) Bencode(w io.Writer) int {
 		_ = bw.WriteByte('e')
 		wLen += 2
 	}
-	bw.Flush()
+	_ = bw.Flush()
 	return wLen
 }
 
