@@ -195,7 +195,7 @@ func unmarshalDict(p reflect.Value, dict map[string]*BObject) error {
 	return nil
 }
 
-func UnMarshal(r io.Reader, s interface{}) error {
+func Unmarshal(r io.Reader, s interface{}) error {
 	o, err := Parse(r)
 	if err != nil {
 		return err
