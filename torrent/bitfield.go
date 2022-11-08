@@ -7,7 +7,7 @@ type Bitfield []byte
 func (bf Bitfield) HasPiece(index int) bool {
 	byteIndex := index / 8
 	offset := index % 8
-	return bf[byteIndex] >> (7 - offset) & 1
+	return ((bf[byteIndex] >> (7 - offset)) & 1) == 1
 }
 
 // SetPiece sets a bit in the index of bitfield
