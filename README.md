@@ -5,13 +5,15 @@
    1. parse a .torrent file
    2. retrieve peers from the tracker
 2. Download from peers
-   1. start a TCP connection & handshake
-   2. send & receive messages
-      1. interpret messages
-   3. put it all together
-      1. manage concurrency & state
-      2. pipeline requests 
+   1. start a TCP connection
+   2. complete BitTorrent peer protocol handshake
+   3. send & receive messages
+      + interpret messages
+   4. put it all together
+      + manage concurrency & state
+      + pipelining requests 
 
 ### References
-+ https://blog.jse.li/posts/torrent/
++ https://blog.jse.li/posts/torrent
 + https://github.com/archeryue/go-torrent
++ http://www.dsc.ufcg.edu.br/~nazareno/bt/bt.htm
