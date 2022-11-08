@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"time"
 )
 
@@ -21,7 +22,6 @@ const (
 	MsgRequest
 	MsgPiece
 	MsgCancel
-	MsgKeepalive
 )
 
 type PeerMsg struct {
@@ -45,13 +45,13 @@ func handshake(conn net.Conn, peerID [PeerIdLen]byte, infoSHA [ShaLen]byte) erro
 	req := NewHandShakeMsg(infoSHA, peerID)
 	_, err := req.WriteHandshake(conn)
 	if err != nil {
-		return fmt.Errorf("failed to send handshake: " + err.Error())
+		return fmt.Errorf("send handshake failed: " + err.Error())
 	}
 
 	// read HandshakeMsg
 	res, err := ReadHandshake(conn)
 	if err != nil {
-		return fmt.Errorf("failed to read handshake: " + err.Error())
+		return fmt.Errorf("read handshake failed: " + err.Error())
 	}
 
 	// check HandshakeMsg
@@ -61,10 +61,31 @@ func handshake(conn net.Conn, peerID [PeerIdLen]byte, infoSHA [ShaLen]byte) erro
 	return nil
 }
 
+func fillBitfield(c *PeerConn) error {
+	c.SetDeadline(time.Now().Add(5 * time.Second))
+	defer c.SetDeadline(time.Time{})
+
+	msg, err := c.ReadMsg()
+	if err != nil {
+		return err
+	}
+	if msg == nil {
+		return fmt.Errorf("expected bitfield")
+	}
+	if msg.Id != MsgBitfield {
+		return fmt.Errorf("expected bitfield, get %d", msg.Id)
+	}
+	fmt.Println("fill bitfield: " + c.peer.Ip.String())
+	c.Field = msg.Payload
+	return nil
+}
+
+const LenBytes uint8 = 4
+
 // ReadMsg parses a message from a stream. Returns `nil` on keep-alive message
 func (c *PeerConn) ReadMsg() (*PeerMsg, error) {
 	// read msg length
-	lenBuf := make([]byte, 4)
+	lenBuf := make([]byte, LenBytes)
 	_, err := io.ReadFull(c, lenBuf)
 	if err != nil {
 		return nil, err
@@ -77,7 +98,7 @@ func (c *PeerConn) ReadMsg() (*PeerMsg, error) {
 
 	// read msg body
 	msgBuf := make([]byte, length)
-	_, err = io.ReadFull(c, lenBuf)
+	_, err = io.ReadFull(c, msgBuf)
 	if err != nil {
 		return nil, err
 	}
@@ -89,16 +110,44 @@ func (c *PeerConn) ReadMsg() (*PeerMsg, error) {
 }
 
 // WriteMsg serializes a message into a buffer of the form
-// <length prefix><message ID><payload>
+// <4 bytes length><1 byte message ID><payload>
 // Interprets `nil` as a keep-alive message
 func (c *PeerConn) WriteMsg(m *PeerMsg) (int, error) {
 	if m == nil {
-		return c.Write(make([]byte, 4))
+		return c.Write(make([]byte, LenBytes))
 	}
 	length := uint32(len(m.Payload) + 1)
 	buf := make([]byte, length+4)
-	binary.BigEndian.PutUint32(buf[0:4], length)
+	binary.BigEndian.PutUint32(buf[0:LenBytes], length)
 	buf[4] = byte(m.Id)
 	copy(buf[5:], m.Payload)
 	return c.Write(buf)
+}
+
+func NewConn(peer PeerInfo, infoSHA [ShaLen]byte, peerId [PeerIdLen]byte) (*PeerConn, error) {
+	// setup tcp connection
+	addr := net.JoinHostPort(peer.Ip.String(), strconv.Itoa(int(peer.Port)))
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("set tcp conn failed: " + addr)
+	}
+	// torrent peer to peer handshake
+	err = handshake(conn, peerId, infoSHA)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	c := &PeerConn{
+		Conn:    conn,
+		Choked:  true,
+		peer:    peer,
+		peerID:  peerId,
+		infoSHA: infoSHA,
+	}
+	// fill bitfield
+	err = fillBitfield(c)
+	if err != nil {
+		return nil, fmt.Errorf("fill bitfield failed, " + err.Error())
+	}
+	return c, nil
 }
