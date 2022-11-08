@@ -13,27 +13,27 @@ import (
 type MsgId uint8
 
 const (
-	// MsgChoke MsgUnchoke MsgInterested MsgNotInterest choking algorithm relative shit
+	// MsgChoke MsgUnchoke MsgInterested MsgNotInterest (choking algorithm shit)
 	MsgChoke MsgId = iota
 	MsgUnchoke
 	MsgInterested
 	MsgNotInterest
 
 	// MsgHave 'have' message's payload is a single number, the index which that downloader
-	// just completed and checked the hash of. (To notify the peer that downloaded from)
+	// just completed and checked the hash of. <len=0005><id=4><piece index>
 	MsgHave
 
 	// MsgBitfield 'bitfield' is only ever sent as the first message to show which block the
-	// sender already downloaded.
+	// sender already downloaded. <len=0001+X><id=5><bitfield>
 	MsgBitfield
 
-	// MsgRequest To request a block. 'request' message contain an index, begin, and length.
+	// MsgRequest To request a block. <len=0013><id=6><index><begin><length>
 	MsgRequest
 
-	// MsgPiece 'piece' is the response of 'request'
+	// MsgPiece 'piece' is the response of 'request'. <len=0009+X><id=7><index><begin><block>
 	MsgPiece
 
-	// MsgCancel 'cancel' end the download. the same payload as 'request'
+	// MsgCancel To end the download. <len=0013><id=8><index><begin><length>
 	MsgCancel
 )
 
