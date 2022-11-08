@@ -16,4 +16,4 @@
 ### References
 + https://blog.jse.li/posts/torrent
 + https://github.com/archeryue/go-torrent
-+ http://www.dsc.ufcg.edu.br/~nazareno/bt/bt.htm
++ https://www.bittorrent.org/beps/bep_0003.html
