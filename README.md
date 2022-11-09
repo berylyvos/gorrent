@@ -1,5 +1,10 @@
 # gorrent
 
+### Features
+- Only single file torrent is supported
+- Do not support upload
+- Do not support DHT
+
 ### How it Works
 1. Find peers
    1. parse a .torrent file
