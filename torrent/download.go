@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"os"
+	"time"
 )
 
 type TorrentTask struct {
@@ -41,15 +42,70 @@ const BlockSize = 16384 // 16KB
 const MaxBacklog = 5
 
 func (state *taskState) handleMsg() error {
-	// TODO
+	msg, err := state.conn.ReadMsg()
+	if err != nil {
+		return err
+	}
+	// handle keep-alive
+	if msg == nil {
+		return nil
+	}
+
+	switch msg.Id {
+	case MsgChoke:
+		state.conn.Choked = true
+	case MsgUnchoke:
+		state.conn.Choked = false
+	case MsgHave:
+		index, err := GetHaveIndex(msg)
+		if err != nil {
+			return err
+		}
+		state.conn.Field.SetPiece(index)
+	case MsgPiece:
+		n, err := CopyPieceData(state.index, state.data, msg)
+		if err != nil {
+			return err
+		}
+		state.downloaded += n
+		state.backlog--
+	}
 
 	return nil
 }
 
 func downloadPiece(conn *PeerConn, task *pieceTask) (*pieceResult, error) {
-	// TODO
+	state := &taskState{
+		index: task.index,
+		conn:  conn,
+		data:  make([]byte, task.length),
+	}
+	conn.SetDeadline(time.Now().Add(15 * time.Second))
+	defer conn.SetDeadline(time.Time{})
 
-	return nil, nil
+	for state.downloaded < task.length {
+		if !conn.Choked {
+			for state.backlog < MaxBacklog && state.requested < task.length {
+				restLen := BlockSize
+				if task.length-state.requested < restLen {
+					restLen = task.length - state.requested
+				}
+				msg := NewRequestMsg(state.index, state.requested, restLen)
+				_, err := state.conn.WriteMsg(msg)
+				if err != nil {
+					return nil, err
+				}
+				state.backlog++
+				state.requested += restLen
+			}
+		}
+		err := state.handleMsg()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &pieceResult{state.index, state.data}, nil
 }
 
 func checkPiece(task *pieceTask, res *pieceResult) bool {
@@ -62,7 +118,41 @@ func checkPiece(task *pieceTask, res *pieceResult) bool {
 }
 
 func (t *TorrentTask) peerRoutine(peer PeerInfo, taskQueue chan *pieceTask, resultQueue chan *pieceResult) {
-	// TODO
+	// set up conn with peer
+	peerConn, err := NewConn(peer, t.InfoSHA, t.PeerId)
+	if err != nil {
+		fmt.Printf("failed to connect peer: %s:%d\n", peer.Ip.String(), peer.Port)
+		return
+	}
+	defer peerConn.Close()
+
+	fmt.Printf("complete handshake with peer: %s:%d\n", peer.Ip.String(), peer.Port)
+	peerConn.WriteMsg(&PeerMsg{MsgInterested, nil})
+
+	// retrieve piece tasks from task channel and try to download
+	for task := range taskQueue {
+		if !peerConn.Field.HasPiece(task.index) {
+			// if peer don't have current piece, put task back on task channel and continue
+			taskQueue <- task
+			continue
+		}
+		fmt.Printf("get task, index: %v, peer: %v\n", task.index, peer.Ip.String())
+		res, err := downloadPiece(peerConn, task)
+		if err != nil {
+			// (network) error occurs while downloading piece, put task back and return
+			// need to close the connection and kill this goroutine
+			taskQueue <- task
+			fmt.Println("failed to down piece: " + err.Error())
+			return
+		}
+		if !checkPiece(task, res) {
+			// if piece integrity check fails, put cur task back on task channel and continue to handle next task
+			taskQueue <- task
+			continue
+		}
+		// success downloaded and checked, send to result channel
+		resultQueue <- res
+	}
 }
 
 func (t *TorrentTask) getPieceBounds(index int) (begin, end int) {
