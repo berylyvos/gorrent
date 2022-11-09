@@ -13,14 +13,19 @@ import (
 type MsgId uint8
 
 const (
-	// MsgChoke MsgUnchoke MsgInterested MsgNotInterest (choking algorithm shit)
+	// MsgChoke MsgUnchoke  Whether the remote peer has choked this client. When a peer chokes the
+	// client, it is a notification that no requests will be answered until the client is unchoked.
 	MsgChoke MsgId = iota
 	MsgUnchoke
+
+	// MsgInterested MsgNotInterest  Whether the remote peer is interested in something this client
+	// has to offer. This is a notification that the remote peer will begin requesting blocks when
+	// the client unchokes them.
 	MsgInterested
 	MsgNotInterest
 
-	// MsgHave 'have' message's payload is a single number, the index which that downloader
-	// just completed and checked the hash of. <len=0005><id=4><piece index>
+	// MsgHave 'have' message's payload is a single number, the index which that downloader just
+	// completed and checked the hash of. <len=0005><id=4><piece index>
 	MsgHave
 
 	// MsgBitfield 'bitfield' is only ever sent as the first message to show which blocks the

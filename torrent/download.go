@@ -139,7 +139,7 @@ func (t *TorrentTask) peerRoutine(peer PeerInfo, taskQueue chan *pieceTask, resu
 		fmt.Printf("get task, index: %v, peer: %v\n", task.index, peer.Ip.String())
 		res, err := downloadPiece(peerConn, task)
 		if err != nil {
-			// (network) error occurs while downloading piece, put task back and return
+			// if (network) error occurs while downloading piece, put task back and return
 			// need to close the connection and kill this goroutine
 			taskQueue <- task
 			fmt.Println("failed to down piece: " + err.Error())
@@ -150,7 +150,7 @@ func (t *TorrentTask) peerRoutine(peer PeerInfo, taskQueue chan *pieceTask, resu
 			taskQueue <- task
 			continue
 		}
-		// success downloaded and checked, send to result channel
+		// successfully downloaded and checked, send to result channel
 		resultQueue <- res
 	}
 }
