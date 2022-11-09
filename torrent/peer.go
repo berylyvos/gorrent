@@ -23,7 +23,7 @@ const (
 	// just completed and checked the hash of. <len=0005><id=4><piece index>
 	MsgHave
 
-	// MsgBitfield 'bitfield' is only ever sent as the first message to show which block the
+	// MsgBitfield 'bitfield' is only ever sent as the first message to show which blocks the
 	// sender already downloaded. <len=0001+X><id=5><bitfield>
 	MsgBitfield
 
@@ -163,4 +163,45 @@ func NewConn(peer PeerInfo, infoSHA [ShaLen]byte, peerId [PeerIdLen]byte) (*Peer
 		return nil, fmt.Errorf("fill bitfield failed, " + err.Error())
 	}
 	return c, nil
+}
+
+func NewRequestMsg(index, offset, length int) *PeerMsg {
+	payload := make([]byte, 12)
+	binary.BigEndian.PutUint32(payload[0:4], uint32(index))
+	binary.BigEndian.PutUint32(payload[4:8], uint32(offset))
+	binary.BigEndian.PutUint32(payload[8:12], uint32(length))
+	return &PeerMsg{MsgRequest, payload}
+}
+
+func GetHaveIndex(msg *PeerMsg) (int, error) {
+	if msg.Id != MsgHave {
+		return 0, fmt.Errorf("expected MsgHave (Id %d), got Id %d", MsgHave, msg.Id)
+	}
+	if len(msg.Payload) != 4 {
+		return 0, fmt.Errorf("expected payload length 4, got length %d", len(msg.Payload))
+	}
+	return int(binary.BigEndian.Uint32(msg.Payload)), nil
+}
+
+func CopyPieceData(index int, buf []byte, msg *PeerMsg) (int, error) {
+	if msg.Id != MsgPiece {
+		return 0, fmt.Errorf("expected MsgPiece (Id %d), got Id %d", MsgPiece, msg.Id)
+	}
+	if len(msg.Payload) < 8 {
+		return 0, fmt.Errorf("payload too short. %d < 8", len(msg.Payload))
+	}
+	pieceIndex := int(binary.BigEndian.Uint32(msg.Payload[0:4]))
+	if pieceIndex != index {
+		return 0, fmt.Errorf("expected index %d, got %d", index, pieceIndex)
+	}
+	offset := int(binary.BigEndian.Uint32(msg.Payload[4:8]))
+	if offset >= len(buf) {
+		return 0, fmt.Errorf("offset too high. %d >= %d", offset, len(buf))
+	}
+	data := msg.Payload[8:]
+	if offset+len(data) > len(buf) {
+		return 0, fmt.Errorf("data too large [%d] for offset %d with length %d", len(data), offset, len(buf))
+	}
+	copy(buf[offset:], data)
+	return len(data), nil
 }
