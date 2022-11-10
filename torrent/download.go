@@ -38,7 +38,7 @@ type pieceResult struct {
 	data  []byte
 }
 
-const BlockSize = 16384 // 16KB
+const MaxBlockSize = 16384 // 16KB
 const MaxBacklog = 5
 
 func (state *taskState) handleMsg() error {
@@ -84,19 +84,21 @@ func downloadPiece(conn *PeerConn, task *pieceTask) (*pieceResult, error) {
 	defer conn.SetDeadline(time.Time{})
 
 	for state.downloaded < task.length {
+		// If remote peer unchoked us, send requests until we have enough unfulfilled requests
 		if !conn.Choked {
 			for state.backlog < MaxBacklog && state.requested < task.length {
-				restLen := BlockSize
-				if task.length-state.requested < restLen {
-					restLen = task.length - state.requested
+				blockSize := MaxBlockSize
+				// Last block might be shorter than the typical block
+				if task.length-state.requested < blockSize {
+					blockSize = task.length - state.requested
 				}
-				msg := NewRequestMsg(state.index, state.requested, restLen)
+				msg := NewRequestMsg(state.index, state.requested, blockSize)
 				_, err := state.conn.WriteMsg(msg)
 				if err != nil {
 					return nil, err
 				}
 				state.backlog++
-				state.requested += restLen
+				state.requested += blockSize
 			}
 		}
 		err := state.handleMsg()
@@ -108,7 +110,7 @@ func downloadPiece(conn *PeerConn, task *pieceTask) (*pieceResult, error) {
 	return &pieceResult{state.index, state.data}, nil
 }
 
-func checkPiece(task *pieceTask, res *pieceResult) bool {
+func checkPieceIntegrity(task *pieceTask, res *pieceResult) bool {
 	sha := sha1.Sum(res.data)
 	if !bytes.Equal(task.sha1[:], sha[:]) {
 		fmt.Printf("check integrity failed, index: %v\n", res.index)
@@ -145,7 +147,7 @@ func (t *TorrentTask) peerRoutine(peer PeerInfo, taskQueue chan *pieceTask, resu
 			fmt.Println("failed to down piece: " + err.Error())
 			return
 		}
-		if !checkPiece(task, res) {
+		if !checkPieceIntegrity(task, res) {
 			// if piece integrity check fails, put cur task back on task channel and continue to handle next task
 			taskQueue <- task
 			continue
