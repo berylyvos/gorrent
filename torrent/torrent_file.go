@@ -1,11 +1,14 @@
 package torrent
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/rand"
 	"crypto/sha1"
 	"fmt"
 	"github.com/berylyvos/gorrent/bencode"
 	"io"
+	"os"
 )
 
 type rawInfo struct {
@@ -29,6 +32,20 @@ type TorrentFile struct {
 	FileLen  int
 	PieceLen int
 	PieceSHA [][ShaLen]byte
+}
+
+func Open(path string) (*TorrentFile, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	tf, err := ParseFile(bufio.NewReader(file))
+	if err != nil {
+		return nil, err
+	}
+	return tf, nil
 }
 
 func ParseFile(r io.Reader) (*TorrentFile, error) {
@@ -63,4 +80,41 @@ func ParseFile(r io.Reader) (*TorrentFile, error) {
 	}
 	tf.PieceSHA = pieceSHA
 	return tf, nil
+}
+
+func (tf *TorrentFile) DownloadToFile(path string) error {
+	// generate random peerId
+	var peerId [PeerIdLen]byte
+	_, _ = rand.Read(peerId[:])
+	// retrieve peers from tracker
+	peers := RetrievePeers(tf, peerId)
+	if len(peers) == 0 {
+		return fmt.Errorf("there is no peers")
+	}
+
+	// build torrent task
+	task := &TorrentTask{
+		PeerId:   peerId,
+		PeerList: peers,
+		InfoSHA:  tf.InfoSHA,
+		FileName: tf.FileName,
+		FileLen:  tf.FileLen,
+		PieceLen: tf.PieceLen,
+		PieceSHA: tf.PieceSHA,
+	}
+	// download from peers
+	buf, err := Download(task)
+	if err != nil {
+		return fmt.Errorf("download error: %v", err.Error())
+	}
+	// save data to file
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("fail to create file: " + task.FileName)
+	}
+	_, err = file.Write(buf)
+	if err != nil {
+		return fmt.Errorf("fail to save data to file: %v", err.Error())
+	}
+	return nil
 }

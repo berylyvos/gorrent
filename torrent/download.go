@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"fmt"
-	"os"
 	"time"
 )
 
@@ -166,7 +165,7 @@ func (t *TorrentTask) getPieceBounds(index int) (begin, end int) {
 	return
 }
 
-func Download(task *TorrentTask) error {
+func Download(task *TorrentTask) ([]byte, error) {
 	fmt.Println("start downloading " + task.FileName)
 	// split pieceTasks and init task & result channel
 	pieceCount := len(task.PieceSHA)
@@ -199,16 +198,5 @@ func Download(task *TorrentTask) error {
 	close(taskQueue)
 	close(resultQueue)
 
-	// save data to file
-	file, err := os.Create(task.FileName)
-	if err != nil {
-		fmt.Println("fail to create file: " + task.FileName)
-		return err
-	}
-	_, err = file.Write(buf)
-	if err != nil {
-		fmt.Println("fail to save data")
-		return err
-	}
-	return nil
+	return buf, nil
 }
