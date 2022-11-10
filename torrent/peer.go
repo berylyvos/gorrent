@@ -49,11 +49,11 @@ type PeerMsg struct {
 
 type PeerConn struct {
 	net.Conn
-	Choked  bool
-	Field   Bitfield
-	peer    PeerInfo
-	peerID  [PeerIdLen]byte
-	infoSHA [ShaLen]byte
+	Choked   bool
+	BitField Bitfield
+	peer     PeerInfo
+	peerID   [PeerIdLen]byte
+	infoSHA  [ShaLen]byte
 }
 
 func handshake(conn net.Conn, peerID [PeerIdLen]byte, infoSHA [ShaLen]byte) error {
@@ -94,7 +94,7 @@ func fillBitfield(c *PeerConn) error {
 		return fmt.Errorf("expected bitfield, get %d", msg.Id)
 	}
 	fmt.Println("fill bitfield: " + c.peer.Ip.String())
-	c.Field = msg.Payload
+	c.BitField = msg.Payload
 	return nil
 }
 

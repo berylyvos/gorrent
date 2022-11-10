@@ -61,7 +61,7 @@ func (state *taskState) handleMsg() error {
 		if err != nil {
 			return err
 		}
-		state.conn.Field.SetPiece(index)
+		state.conn.BitField.SetPiece(index)
 	case MsgPiece:
 		n, err := CopyPieceData(state.index, state.data, msg)
 		if err != nil {
@@ -133,7 +133,7 @@ func (t *TorrentTask) peerRoutine(peer PeerInfo, taskQueue chan *pieceTask, resu
 
 	// retrieve piece tasks from task channel and try to download
 	for task := range taskQueue {
-		if !peerConn.Field.HasPiece(task.index) {
+		if !peerConn.BitField.HasPiece(task.index) {
 			// if peer don't have current piece, put task back on task channel and continue
 			taskQueue <- task
 			continue
