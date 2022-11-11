@@ -1,16 +1,13 @@
 package torrent
 
 import (
-	"bufio"
 	"crypto/rand"
 	"fmt"
-	"os"
 	"testing"
 )
 
 func TestRetrievePeers(t *testing.T) {
-	file, _ := os.Open("../testfile/debian-iso.torrent")
-	tf, _ := ParseFile(bufio.NewReader(file))
+	tf, _ := Open("../testfile/debian-iso.torrent")
 
 	var peerId [PeerIdLen]byte
 	_, _ = rand.Read(peerId[:])

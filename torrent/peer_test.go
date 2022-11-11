@@ -1,11 +1,9 @@
 package torrent
 
 import (
-	"bufio"
 	"crypto/rand"
 	"fmt"
 	"net"
-	"os"
 	"testing"
 )
 
@@ -14,8 +12,7 @@ func TestPeer(t *testing.T) {
 	peer.Ip = net.ParseIP("5.2.73.161")
 	peer.Port = uint16(9091)
 
-	file, _ := os.Open("../testfile/debian-iso.torrent")
-	tf, _ := ParseFile(bufio.NewReader(file))
+	tf, _ := Open("../testfile/debian-iso.torrent")
 
 	var peerId [PeerIdLen]byte
 	_, _ = rand.Read(peerId[:])

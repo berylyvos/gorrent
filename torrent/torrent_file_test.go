@@ -1,16 +1,12 @@
 package torrent
 
 import (
-	"bufio"
 	"github.com/stretchr/testify/assert"
-	"os"
 	"testing"
 )
 
 func TestParseFile(t *testing.T) {
-	file, err := os.Open("../testfile/debian-iso.torrent")
-	assert.Equal(t, nil, err)
-	tf, err := ParseFile(bufio.NewReader(file))
+	tf, err := Open("../testfile/debian-iso.torrent")
 	assert.Equal(t, nil, err)
 	assert.Equal(t, "http://bttracker.debian.org:6969/announce", tf.Announce)
 	assert.Equal(t, "debian-11.2.0-amd64-netinst.iso", tf.FileName)
