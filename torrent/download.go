@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"fmt"
+	"runtime"
 	"time"
 )
 
@@ -137,7 +138,6 @@ func (t *TorrentTask) peerRoutine(peer PeerInfo, taskQueue chan *pieceTask, resu
 			taskQueue <- task
 			continue
 		}
-		fmt.Printf("get task, index: %v, peer: %v\n", task.index, peer.Ip.String())
 		res, err := downloadPiece(peerConn, task)
 		if err != nil {
 			// if (network) error occurs while downloading piece, put task back and return
@@ -165,14 +165,14 @@ func (t *TorrentTask) getPieceBounds(index int) (begin, end int) {
 	return
 }
 
-func Download(task *TorrentTask) ([]byte, error) {
-	fmt.Println("start downloading " + task.FileName)
+func (t *TorrentTask) Download() ([]byte, error) {
+	fmt.Println("start downloading " + t.FileName)
 	// split pieceTasks and init task & result channel
-	pieceCount := len(task.PieceSHA)
+	pieceCount := len(t.PieceSHA)
 	taskQueue := make(chan *pieceTask, pieceCount)
 	resultQueue := make(chan *pieceResult)
-	for idx, sha := range task.PieceSHA {
-		begin, end := task.getPieceBounds(idx)
+	for idx, sha := range t.PieceSHA {
+		begin, end := t.getPieceBounds(idx)
 		taskQueue <- &pieceTask{
 			index:  idx,
 			sha1:   sha,
@@ -180,20 +180,21 @@ func Download(task *TorrentTask) ([]byte, error) {
 		}
 	}
 	// init goroutines for each peer
-	for _, peer := range task.PeerList {
-		go task.peerRoutine(peer, taskQueue, resultQueue)
+	for _, peer := range t.PeerList {
+		go t.peerRoutine(peer, taskQueue, resultQueue)
 	}
 	// collect piece result
-	buf := make([]byte, task.FileLen)
+	buf := make([]byte, t.FileLen)
 	count := 0
 	for count < pieceCount {
 		res := <-resultQueue
-		begin, end := task.getPieceBounds(res.index)
+		begin, end := t.getPieceBounds(res.index)
 		copy(buf[begin:end], res.data)
 		count++
 		// print progress
 		percent := float64(count) / float64(pieceCount) * 100
-		fmt.Printf("downloading, progress: (%0.2f%%)\n", percent)
+		numWorkers := runtime.NumGoroutine() - 1 // subtract 1 for main thread
+		fmt.Printf("downloaded piece #%d from %d peers in progress: (%0.2f%%)\n", res.index, numWorkers, percent)
 	}
 	close(taskQueue)
 	close(resultQueue)

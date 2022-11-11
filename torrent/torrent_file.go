@@ -103,7 +103,7 @@ func (tf *TorrentFile) DownloadToFile(path string) error {
 		PieceSHA: tf.PieceSHA,
 	}
 	// download from peers
-	buf, err := Download(task)
+	buf, err := task.Download()
 	if err != nil {
 		return fmt.Errorf("download error: %v", err.Error())
 	}
