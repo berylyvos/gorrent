@@ -24,11 +24,8 @@ type rawInfo struct {
 }
 
 type rawInfoMulti struct {
-	Files       []file `bencode:"files"`
-	Length      int    `bencode:"length"`
-	Name        string `bencode:"name"`
-	PieceLength int    `bencode:"piece length"`
-	Pieces      string `bencode:"pieces"`
+	Files []file `bencode:"files"`
+	rawInfo
 }
 
 type rawFile struct {
@@ -79,7 +76,7 @@ func ParseFile(r io.Reader) (*TorrentFile, error) {
 		return nil, err
 	}
 
-	tf := flattenTorrentFile(raw)
+	tf := newTorrentFile(raw)
 	setInfoSha(raw, tf)
 	setPieceSha(raw, tf)
 
@@ -148,7 +145,7 @@ func flattenAnnounceList(list [][]string) []string {
 	return res
 }
 
-func flattenTorrentFile(raw *rawFile) *TorrentFile {
+func newTorrentFile(raw *rawFile) *TorrentFile {
 	tf := new(TorrentFile)
 	tf.Announce = raw.Announce
 	tf.AnnounceList = flattenAnnounceList(raw.AnnounceList)
