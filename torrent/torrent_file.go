@@ -11,7 +11,13 @@ import (
 	"os"
 )
 
+type file struct {
+	Length int      `bencode:"length"`
+	Path   []string `bencode:"path"`
+}
+
 type rawInfo struct {
+	Files       []file `bencode:"files"`
 	Length      int    `bencode:"length"`
 	Name        string `bencode:"name"`
 	PieceLength int    `bencode:"piece length"`
@@ -19,19 +25,27 @@ type rawInfo struct {
 }
 
 type rawFile struct {
-	Announce string  `bencode:"announce"`
-	Info     rawInfo `bencode:"info"`
+	Announce     string     `bencode:"announce"`
+	AnnounceList [][]string `bencode:"announce-list"`
+	Info         rawInfo    `bencode:"info"`
 }
 
 const ShaLen int = 20
 
+type File struct {
+	Length int
+	Name   string
+}
+
 type TorrentFile struct {
-	Announce string
-	InfoSHA  [ShaLen]byte
-	FileName string
-	FileLen  int
-	PieceLen int
-	PieceSHA [][ShaLen]byte
+	Announce     string
+	AnnounceList []string
+	InfoSHA      [ShaLen]byte
+	FileList     []File
+	FileName     string
+	FileLen      int
+	PieceLen     int
+	PieceSHA     [][ShaLen]byte
 }
 
 func Open(path string) (*TorrentFile, error) {
@@ -57,6 +71,8 @@ func ParseFile(r io.Reader) (*TorrentFile, error) {
 	}
 	tf := new(TorrentFile)
 	tf.Announce = raw.Announce
+	tf.AnnounceList = flattenAnnounceList(raw.AnnounceList)
+	tf.FileList = flattenFiles(raw.Info.Files)
 	tf.FileName = raw.Info.Name
 	tf.FileLen = raw.Info.Length
 	tf.PieceLen = raw.Info.PieceLength
@@ -117,4 +133,23 @@ func (tf *TorrentFile) DownloadToFile(path string) error {
 		return fmt.Errorf("fail to save data to file: %v", err.Error())
 	}
 	return nil
+}
+
+func flattenFiles(files []file) []File {
+	res := make([]File, len(files))
+	for i, f := range files {
+		res[i] = File{
+			Name:   f.Path[len(f.Path)-1],
+			Length: f.Length,
+		}
+	}
+	return res
+}
+
+func flattenAnnounceList(list [][]string) []string {
+	res := make([]string, len(list))
+	for i, lst := range list {
+		res[i] = lst[len(lst)-1]
+	}
+	return res
 }
