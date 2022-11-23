@@ -69,32 +69,11 @@ func ParseFile(r io.Reader) (*TorrentFile, error) {
 		fmt.Println("failed to parse torrent file")
 		return nil, err
 	}
-	tf := new(TorrentFile)
-	tf.Announce = raw.Announce
-	tf.AnnounceList = flattenAnnounceList(raw.AnnounceList)
-	tf.FileList = flattenFiles(raw.Info.Files)
-	tf.FileName = raw.Info.Name
-	tf.FileLen = raw.Info.Length
-	tf.PieceLen = raw.Info.PieceLength
 
-	// compute InfoSHA which is the SHA-1 hash of the entire bencoded info dict
-	buf := new(bytes.Buffer)
-	wLen := bencode.Marshal(buf, raw.Info)
-	if wLen == 0 {
-		fmt.Println("raw file info marshal error")
-	}
-	tf.InfoSHA = sha1.Sum(buf.Bytes())
+	tf := flattenTorrentFile(raw)
+	setInfoSha(raw, tf)
+	setPieceSha(raw, tf)
 
-	// raw.Info.Pieces is a big binary blob containing the SHA-1 hashes of each piece
-	// now we want to split pieces into small piece
-	// compute PieceSHA which is a slice of each piece's SHA-1 hash
-	piecesBytes := []byte(raw.Info.Pieces)
-	piecesCnt := len(piecesBytes) / ShaLen
-	pieceSHA := make([][ShaLen]byte, piecesCnt)
-	for i := 0; i < piecesCnt; i++ {
-		copy(pieceSHA[i][:], piecesBytes[i*ShaLen:(i+1)*ShaLen])
-	}
-	tf.PieceSHA = pieceSHA
 	return tf, nil
 }
 
@@ -152,4 +131,38 @@ func flattenAnnounceList(list [][]string) []string {
 		res[i] = lst[len(lst)-1]
 	}
 	return res
+}
+
+func flattenTorrentFile(raw *rawFile) *TorrentFile {
+	tf := new(TorrentFile)
+	tf.Announce = raw.Announce
+	tf.AnnounceList = flattenAnnounceList(raw.AnnounceList)
+	tf.FileList = flattenFiles(raw.Info.Files)
+	tf.FileName = raw.Info.Name
+	tf.FileLen = raw.Info.Length
+	tf.PieceLen = raw.Info.PieceLength
+	return tf
+}
+
+// setInfoSha compute InfoSHA which is the SHA-1 hash of the entire bencoded info dict
+func setInfoSha(raw *rawFile, tf *TorrentFile) {
+	buf := new(bytes.Buffer)
+	wLen := bencode.Marshal(buf, raw.Info)
+	if wLen == 0 {
+		fmt.Println("raw file info marshal error")
+	}
+	tf.InfoSHA = sha1.Sum(buf.Bytes())
+}
+
+// setPieceSha compute PieceSHA which is a slice of each piece's SHA-1
+// raw.Info.Pieces is a big binary blob containing the SHA-1 hashes of
+// each piece, now we want to split it into pieces.
+func setPieceSha(raw *rawFile, tf *TorrentFile) {
+	piecesBytes := []byte(raw.Info.Pieces)
+	piecesCnt := len(piecesBytes) / ShaLen
+	pieceSHA := make([][ShaLen]byte, piecesCnt)
+	for i := 0; i < piecesCnt; i++ {
+		copy(pieceSHA[i][:], piecesBytes[i*ShaLen:(i+1)*ShaLen])
+	}
+	tf.PieceSHA = pieceSHA
 }
