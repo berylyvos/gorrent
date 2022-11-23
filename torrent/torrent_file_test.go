@@ -21,5 +21,10 @@ func TestParseFile(t *testing.T) {
 
 func TestParseMultiFile(t *testing.T) {
 	tf, err := Open("../testfile/The.Breakfast.Club.1985.REMASTERED.720p.BluRay.999MB.HQ.x265.10bit-GalaxyRG.torrent")
-	fmt.Printf("%+v\n%v\n", tf, err)
+	fmt.Printf("%+v\n%v\n", tf.FileList, err)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, "udp://tracker.coppersurfer.tk:6969/announce", tf.Announce)
+	assert.Equal(t, "The.Breakfast.Club.1985.REMASTERED.720p.BluRay.999MB.HQ.x265.10bit-GalaxyRG[TGx]", tf.FileName)
+	assert.Equal(t, 0, tf.FileLen)
+	assert.Equal(t, 524288, tf.PieceLen) // 512 KB
 }

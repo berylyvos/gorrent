@@ -17,6 +17,13 @@ type file struct {
 }
 
 type rawInfo struct {
+	Length      int    `bencode:"length"`
+	Name        string `bencode:"name"`
+	PieceLength int    `bencode:"piece length"`
+	Pieces      string `bencode:"pieces"`
+}
+
+type rawInfoMulti struct {
 	Files       []file `bencode:"files"`
 	Length      int    `bencode:"length"`
 	Name        string `bencode:"name"`
@@ -25,9 +32,10 @@ type rawInfo struct {
 }
 
 type rawFile struct {
-	Announce     string     `bencode:"announce"`
-	AnnounceList [][]string `bencode:"announce-list"`
-	Info         rawInfo    `bencode:"info"`
+	Announce     string       `bencode:"announce"`
+	AnnounceList [][]string   `bencode:"announce-list"`
+	Info         rawInfo      `bencode:"info"`
+	InfoMulti    rawInfoMulti `bencode:"info"`
 }
 
 const ShaLen int = 20
@@ -46,6 +54,7 @@ type TorrentFile struct {
 	FileLen      int
 	PieceLen     int
 	PieceSHA     [][ShaLen]byte
+	HasMulti     bool
 }
 
 func Open(path string) (*TorrentFile, error) {
@@ -115,6 +124,9 @@ func (tf *TorrentFile) DownloadToFile(path string) error {
 }
 
 func flattenFiles(files []file) []File {
+	if files == nil {
+		return nil
+	}
 	res := make([]File, len(files))
 	for i, f := range files {
 		res[i] = File{
@@ -126,6 +138,9 @@ func flattenFiles(files []file) []File {
 }
 
 func flattenAnnounceList(list [][]string) []string {
+	if list == nil {
+		return nil
+	}
 	res := make([]string, len(list))
 	for i, lst := range list {
 		res[i] = lst[len(lst)-1]
@@ -137,7 +152,10 @@ func flattenTorrentFile(raw *rawFile) *TorrentFile {
 	tf := new(TorrentFile)
 	tf.Announce = raw.Announce
 	tf.AnnounceList = flattenAnnounceList(raw.AnnounceList)
-	tf.FileList = flattenFiles(raw.Info.Files)
+	tf.FileList = flattenFiles(raw.InfoMulti.Files)
+	if tf.FileList != nil {
+		tf.HasMulti = true
+	}
 	tf.FileName = raw.Info.Name
 	tf.FileLen = raw.Info.Length
 	tf.PieceLen = raw.Info.PieceLength
@@ -145,9 +163,15 @@ func flattenTorrentFile(raw *rawFile) *TorrentFile {
 }
 
 // setInfoSha compute InfoSHA which is the SHA-1 hash of the entire bencoded info dict
+// be careful! if there's only a single file, bencoded data should not contain `files`
 func setInfoSha(raw *rawFile, tf *TorrentFile) {
 	buf := new(bytes.Buffer)
-	wLen := bencode.Marshal(buf, raw.Info)
+	wLen := 0
+	if tf.HasMulti {
+		wLen = bencode.Marshal(buf, raw.InfoMulti)
+	} else {
+		wLen = bencode.Marshal(buf, raw.Info)
+	}
 	if wLen == 0 {
 		fmt.Println("raw file info marshal error")
 	}
