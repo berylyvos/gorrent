@@ -24,5 +24,5 @@
 + [Bittorrent Protocol Specification v1.0](https://wiki.theory.org/BitTorrentSpecification)
 + [A toy torrent client written in golang](https://github.com/archeryue/go-torrent)
 + [Building a BitTorrent client from the ground up in Go](https://blog.jse.li/posts/torrent)
-+ [UDP tracker protocol](https://xbtt.sourceforge.net/udp_tracker_protocol.html)
++ [UDP Tracker Protocol for BitTorrent](http://bittorrent.org/beps/bep_0015.html)
 + [BitTorrent’s Future: DHT, PEX, and Magnet Links Explained](https://lifehacker.com/bittorrent-s-future-dht-pex-and-magnet-links-explain-5411311)
