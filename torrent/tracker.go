@@ -17,7 +17,7 @@ const (
 	IPLen                int = 4
 	PortLen              int = 2
 	PeerLen                  = IPLen + PortLen
-	RetrievePeersTimeout int = 15 // minutes
+	RetrievePeersTimeout int = 15
 )
 
 type PeerInfo struct {
