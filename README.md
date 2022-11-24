@@ -1,9 +1,10 @@
 # gorrent
 
 ## Features
-- Multiple files torrent download
-- ~~Upload support~~
-- ~~DHT, PeX and Magnet links~~
+- Multiple files torrents download
+- Supports UDP & HTTP trackers
+- ~~Supports uploading pieces~~
+- ~~Supports DHT, PeX and Magnet links~~
 
 ## How it Works
 1. Peers discovery
@@ -23,4 +24,5 @@
 + [Bittorrent Protocol Specification v1.0](https://wiki.theory.org/BitTorrentSpecification)
 + [A toy torrent client written in golang](https://github.com/archeryue/go-torrent)
 + [Building a BitTorrent client from the ground up in Go](https://blog.jse.li/posts/torrent)
++ [UDP tracker protocol](https://xbtt.sourceforge.net/udp_tracker_protocol.html)
 + [BitTorrent’s Future: DHT, PEX, and Magnet Links Explained](https://lifehacker.com/bittorrent-s-future-dht-pex-and-magnet-links-explain-5411311)
