@@ -9,6 +9,7 @@ import (
 	"github.com/berylyvos/gorrent/bencode"
 	"io"
 	"os"
+	"strings"
 )
 
 type file struct {
@@ -39,7 +40,7 @@ const ShaLen int = 20
 
 type File struct {
 	Length int
-	Name   string
+	Path   string
 }
 
 type TorrentFile struct {
@@ -127,7 +128,7 @@ func flattenFiles(files []file) []File {
 	res := make([]File, len(files))
 	for i, f := range files {
 		res[i] = File{
-			Name:   f.Path[len(f.Path)-1],
+			Path:   strings.Join(f.Path, "/"),
 			Length: f.Length,
 		}
 	}
