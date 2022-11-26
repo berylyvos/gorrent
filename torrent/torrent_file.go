@@ -139,9 +139,12 @@ func flattenAnnounceList(list [][]string) []string {
 	if list == nil {
 		return nil
 	}
-	res := make([]string, len(list))
-	for i, lst := range list {
-		res[i] = lst[len(lst)-1]
+	// shape of list can be N x 1 or 1 x N
+	var res []string
+	for _, lst := range list {
+		for _, x := range lst {
+			res = append(res, x)
+		}
 	}
 	return res
 }
@@ -161,7 +164,7 @@ func newTorrentFile(raw *rawFile) *TorrentFile {
 }
 
 // setInfoSha compute InfoSHA which is the SHA-1 hash of the entire bencoded info dict
-// be careful! if there's only a single file, bencoded data should not contain `files`
+// Be careful! If there's only a single file, bencoded data should not contain `files`.
 func setInfoSha(raw *rawFile, tf *TorrentFile) {
 	buf := new(bytes.Buffer)
 	wLen := 0
