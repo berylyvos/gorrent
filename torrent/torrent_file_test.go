@@ -20,6 +20,6 @@ func TestParseFile(t *testing.T) {
 }
 
 func TestParseMultiFile(t *testing.T) {
-	tf, err := Open("../testfile/nope.torrent")
+	tf, err := Open("../testfile/cyberpunk.torrent")
 	fmt.Printf("%+v\n%v\n", tf, err)
 }

@@ -80,6 +80,7 @@ func ParseFile(r io.Reader) (*TorrentFile, error) {
 	tf := newTorrentFile(raw)
 	setInfoSha(raw, tf)
 	setPieceSha(raw, tf)
+	setFileLen(tf)
 
 	return tf, nil
 }
@@ -190,4 +191,16 @@ func setPieceSha(raw *rawFile, tf *TorrentFile) {
 		copy(pieceSHA[i][:], piecesBytes[i*ShaLen:(i+1)*ShaLen])
 	}
 	tf.PieceSHA = pieceSHA
+}
+
+// setFileLen set total length of tf.FileList to tf.FileLen if tf.FileLen == 0
+func setFileLen(tf *TorrentFile) {
+	if tf.FileLen != 0 {
+		return
+	}
+	fileLen := 0
+	for _, f := range tf.FileList {
+		fileLen += f.Length
+	}
+	tf.FileLen = fileLen
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func TestRetrievePeers(t *testing.T) {
-	tf, _ := Open("../testfile/debian-iso.torrent")
+	tf, _ := Open("../testfile/nope.torrent")
 
 	var peerId [PeerIdLen]byte
 	_, _ = rand.Read(peerId[:])
