@@ -78,9 +78,9 @@ func ParseFile(r io.Reader) (*TorrentFile, error) {
 	}
 
 	tf := newTorrentFile(raw)
-	setInfoSha(raw, tf)
-	setPieceSha(raw, tf)
-	setFileLen(tf)
+	tf.setInfoSha(raw)
+	tf.setPieceSha(raw)
+	tf.setFileLen()
 
 	return tf, nil
 }
@@ -175,7 +175,7 @@ func newTorrentFile(raw *rawFile) *TorrentFile {
 
 // setInfoSha compute InfoSHA which is the SHA-1 hash of the entire bencoded info dict
 // Be careful! If there's only a single file, bencoded data should not contain `files`.
-func setInfoSha(raw *rawFile, tf *TorrentFile) {
+func (tf *TorrentFile) setInfoSha(raw *rawFile) {
 	buf := new(bytes.Buffer)
 	wLen := 0
 	if tf.HasMulti {
@@ -192,7 +192,7 @@ func setInfoSha(raw *rawFile, tf *TorrentFile) {
 // setPieceSha compute PieceSHA which is a slice of each piece's SHA-1
 // raw.Info.Pieces is a big binary blob containing the SHA-1 hashes of
 // each piece, now we want to split it into pieces.
-func setPieceSha(raw *rawFile, tf *TorrentFile) {
+func (tf *TorrentFile) setPieceSha(raw *rawFile) {
 	piecesBytes := []byte(raw.Info.Pieces)
 	piecesCnt := len(piecesBytes) / ShaLen
 	pieceSHA := make([][ShaLen]byte, piecesCnt)
@@ -203,7 +203,7 @@ func setPieceSha(raw *rawFile, tf *TorrentFile) {
 }
 
 // setFileLen set total length of tf.FileList to tf.FileLen if tf.FileLen == 0
-func setFileLen(tf *TorrentFile) {
+func (tf *TorrentFile) setFileLen() {
 	if tf.FileLen != 0 {
 		return
 	}
