@@ -1,6 +1,7 @@
 package torrent
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -22,6 +23,16 @@ const (
 	RetrievePeersTimeout int = 3
 )
 
+const UDPTrackerProtocolID = 0x41727101980
+
+// UDP Tracker protocol action type
+const (
+	ActionConnect = iota
+	ActionAnnounce
+	ActionScrape
+	ActionError
+)
+
 type PeerInfo struct {
 	Ip   net.IP
 	Port uint16
@@ -32,7 +43,13 @@ type TrackerResp struct {
 	Peers    string `bencode:"peers"`
 }
 
-func buildHTTPTrackerUrl(tf *TorrentFile, peerId [PeerIdLen]byte) ([]string, error) {
+type UDPTracker struct {
+	Host string
+	IP   net.IP
+	Port int
+}
+
+func buildHTTPTrackerUrls(tf *TorrentFile, peerId [PeerIdLen]byte) ([]string, error) {
 	var urls []string
 	if len(tf.Announce) != 0 && isHTTPTrackerUrl(tf.Announce) {
 		urls = append(urls, tf.Announce)
@@ -70,6 +87,27 @@ func buildHTTPTrackerUrl(tf *TorrentFile, peerId [PeerIdLen]byte) ([]string, err
 	return res, nil
 }
 
+func buildUDPTrackers(tf *TorrentFile) ([]UDPTracker, error) {
+	var trackers []UDPTracker
+	for _, ann := range tf.AnnounceList {
+		if !isUDPTrackerUrl(ann) {
+			continue
+		}
+		tr := UDPTracker{}
+		urlStr := strings.Split(strings.Split(ann, "/")[2], ":")
+		tr.Host = urlStr[0]
+		tr.Port, _ = strconv.Atoi(urlStr[1])
+		ips, err := net.LookupIP(urlStr[0])
+		if err != nil {
+			fmt.Printf("%v host look up ip error: %v\n", tr.Host, err)
+			continue
+		}
+		tr.IP = ips[0]
+		trackers = append(trackers, tr)
+	}
+	return trackers, nil
+}
+
 func buildPeerInfo(peers []byte, peerChan chan *PeerInfo) {
 	if len(peers)%PeerLen != 0 {
 		fmt.Println("received malformed peers")
@@ -85,14 +123,23 @@ func buildPeerInfo(peers []byte, peerChan chan *PeerInfo) {
 }
 
 func RetrievePeers(tf *TorrentFile, peerId [PeerIdLen]byte, peerMap *map[string]*PeerInfo) {
-	httpTrackerUrls, err := buildHTTPTrackerUrl(tf, peerId)
+	httpTrackerUrls, err := buildHTTPTrackerUrls(tf, peerId)
 	if err != nil {
 		fmt.Println("build http tracker urls error: " + err.Error())
+		return
+	}
+	udpTrackers, err := buildUDPTrackers(tf)
+	if err != nil {
+		fmt.Println("build udp tracker urls error: " + err.Error())
 		return
 	}
 
 	peerChan := make(chan *PeerInfo)
 	getPeersFromHTTPTrackers(httpTrackerUrls, peerChan)
+
+	for _, tr := range udpTrackers {
+		go connect(tf, tr, peerChan)
+	}
 
 	for {
 		select {
@@ -127,7 +174,146 @@ func getPeersFromHTTPTrackers(trackerUrls []string, peerChan chan *PeerInfo) {
 
 			buildPeerInfo([]byte(trackerResp.Peers), peerChan)
 		}(trackerUrl)
+	}
+}
 
+func connect(tf *TorrentFile, tracker UDPTracker, peerChan chan *PeerInfo) {
+	socket, err := net.DialUDP("udp", nil, &net.UDPAddr{
+		IP:   tracker.IP,
+		Port: tracker.Port,
+	})
+	if err != nil {
+		fmt.Printf("%v connect dial error: %v\n", tracker.Host, err)
+		return
+	}
+	defer func() { _ = socket.Close() }()
+
+	// connect request:
+	// Offset  Size            Name            Value
+	// 0       64-bit integer  protocol_id     0x41727101980 // magic constant
+	// 8       32-bit integer  action          0 // connect
+	// 12      32-bit integer  transaction_id
+	// 16
+	transactionID := 0x4c4a68
+	payload := make([]byte, 16)
+	binary.BigEndian.PutUint64(payload[0:8], uint64(UDPTrackerProtocolID))
+	binary.BigEndian.PutUint32(payload[8:12], uint32(ActionConnect))
+	binary.BigEndian.PutUint32(payload[12:16], uint32(transactionID))
+	_, err = socket.Write(payload)
+	if err != nil {
+		fmt.Printf("%v connect write payload error: %v\n", tracker.Host, err)
+		return
+	}
+	data := make([]byte, 16)
+	_ = socket.SetReadDeadline(time.Now().Add(time.Second * 15))
+	n, remoteAddr, err := socket.ReadFromUDP(data)
+	if err != nil {
+		fmt.Printf("%v connect read from udp error: %v\n", tracker.Host, err)
+		return
+	}
+	// connect response:
+	// 0       32-bit integer  action          0 // connect
+	// 4       32-bit integer  transaction_id
+	// 8       64-bit integer  connection_id
+	// 16
+	if binary.BigEndian.Uint32(data[:4]) == ActionError {
+		fmt.Printf("%v connect response error\n", tracker.Host)
+		return
+	}
+
+	fmt.Printf("connect recv:%v addr:%v count:%v\n", data[:n], remoteAddr, n)
+	announce(tf, binary.BigEndian.Uint64(data[8:16]), tracker, peerChan)
+}
+
+func announce(tf *TorrentFile, connId uint64, tracker UDPTracker, peerChan chan *PeerInfo) {
+	socket, err := net.DialUDP("udp", nil, &net.UDPAddr{
+		IP:   tracker.IP,
+		Port: tracker.Port,
+	})
+	localIPStr := strings.Split(socket.LocalAddr().String(), ":")
+	localPort, _ := strconv.Atoi(localIPStr[len(localIPStr)-1])
+	if err != nil {
+		fmt.Printf("%v announce dial error: %v\n", tracker.Host, err)
+		return
+	}
+	defer func() { _ = socket.Close() }()
+
+	// IPv4 announce request:
+	//
+	// Offset  Size    Name    Value
+	// 0       64-bit integer  connection_id
+	// 8       32-bit integer  action          1 // announce
+	// 12      32-bit integer  transaction_id
+	// 16      20-byte string  info_hash
+	// 36      20-byte string  peer_id
+	// 56      64-bit integer  downloaded
+	// 64      64-bit integer  left
+	// 72      64-bit integer  uploaded
+	// 80      32-bit integer  event           0 // 0: none; 1: completed; 2: started; 3: stopped
+	// 84      32-bit integer  IP address      0 // default
+	// 88      32-bit integer  key
+	// 92      32-bit integer  num_want        -1 // default
+	// 96      16-bit integer  port
+	// 98
+	transactionID := 0x4c4a68
+	key := 0x1a7e3d
+	numWant := -1
+	var peerId [20]byte
+	_, _ = rand.Read(peerId[:])
+	payload := make([]byte, 98)
+	binary.BigEndian.PutUint64(payload[0:8], connId)
+	binary.BigEndian.PutUint32(payload[8:12], uint32(ActionAnnounce))
+	binary.BigEndian.PutUint32(payload[12:16], uint32(transactionID))
+	copy(payload[16:36], tf.InfoSHA[:])
+	copy(payload[36:56], peerId[:])
+	binary.BigEndian.PutUint64(payload[56:64], 0)
+	binary.BigEndian.PutUint64(payload[64:72], uint64(tf.FileLen))
+	binary.BigEndian.PutUint64(payload[72:80], 0)
+	binary.BigEndian.PutUint32(payload[80:84], 0)
+	binary.BigEndian.PutUint32(payload[84:88], 0)
+	binary.BigEndian.PutUint32(payload[88:92], uint32(key))
+	binary.BigEndian.PutUint32(payload[92:96], uint32(numWant))
+	binary.BigEndian.PutUint16(payload[96:98], uint16(localPort))
+	_, err = socket.Write(payload)
+	if err != nil {
+		fmt.Printf("%v announce write payload error: %v\n", tracker.Host, err)
+		return
+	}
+	// IPv4 announce response:
+	//
+	// 0           32-bit integer  action          1 // announce
+	// 4           32-bit integer  transaction_id
+	// 8           32-bit integer  interval
+	// 12          32-bit integer  leechers
+	// 16          32-bit integer  seeders
+	// 20 + 6 * n  32-bit integer  IP address
+	// 24 + 6 * n  16-bit integer  TCP port
+	// 20 + 6 * N
+	data := make([]byte, 512)
+	_ = socket.SetReadDeadline(time.Now().Add(time.Second * 15))
+	n, remoteAddr, err := socket.ReadFromUDP(data)
+	if err != nil {
+		fmt.Printf("%v announce read from udp error: %v\n", tracker.Host, err)
+		return
+	}
+	if binary.BigEndian.Uint32(data[:4]) == ActionError {
+		fmt.Printf("%v announce response error\n", tracker.Host)
+		return
+	}
+	fmt.Printf("announce recv:%v addr:%v count:%v\n", data[:n], remoteAddr, n)
+
+	// peers info
+	for i := 0; i < 50; i++ {
+		ip := make(net.IP, 4)
+		binary.BigEndian.PutUint32(ip, binary.BigEndian.Uint32(data[20+6*i:24+6*i]))
+		port := binary.BigEndian.Uint16(data[24+6*i : 26+6*i])
+		if port == 0 {
+			continue
+		}
+		peerChan <- &PeerInfo{
+			Ip:   ip,
+			Port: port,
+		}
 	}
 }
 
