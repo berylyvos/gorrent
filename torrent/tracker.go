@@ -126,20 +126,15 @@ func RetrievePeers(tf *TorrentFile, peerId [PeerIdLen]byte, peerMap *map[string]
 	httpTrackerUrls, err := buildHTTPTrackerUrls(tf, peerId)
 	if err != nil {
 		fmt.Println("build http tracker urls error: " + err.Error())
-		return
 	}
 	udpTrackers, err := buildUDPTrackers(tf)
 	if err != nil {
 		fmt.Println("build udp tracker urls error: " + err.Error())
-		return
 	}
 
 	peerChan := make(chan *PeerInfo)
 	getPeersFromHTTPTrackers(httpTrackerUrls, peerChan)
-
-	for _, tr := range udpTrackers {
-		go connect(tf, tr, peerChan)
-	}
+	getPeersFromUDPTrackers(tf, udpTrackers, peerChan)
 
 	for {
 		select {
@@ -174,6 +169,12 @@ func getPeersFromHTTPTrackers(trackerUrls []string, peerChan chan *PeerInfo) {
 
 			buildPeerInfo([]byte(trackerResp.Peers), peerChan)
 		}(trackerUrl)
+	}
+}
+
+func getPeersFromUDPTrackers(tf *TorrentFile, udpTrackers []UDPTracker, peerChan chan *PeerInfo) {
+	for _, tr := range udpTrackers {
+		go connect(tf, tr, peerChan)
 	}
 }
 

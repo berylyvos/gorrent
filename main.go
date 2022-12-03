@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	inPath := "./testfile/cyberpunk.torrent"
+	inPath := "./testfile/The.Breakfast.Club.1985.REMASTERED.720p.BluRay.999MB.HQ.x265.10bit-GalaxyRG.torrent"
 	outPath := "./nope"
 	// open and parse torrent file
 	tf, err := torrent.Open(inPath)
