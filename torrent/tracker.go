@@ -19,7 +19,7 @@ const (
 	IPLen                int = 4
 	PortLen              int = 2
 	PeerLen                  = IPLen + PortLen
-	RetrievePeersTimeout int = 1
+	RetrievePeersTimeout int = 3
 )
 
 type PeerInfo struct {
@@ -53,7 +53,7 @@ func buildHTTPTrackerUrl(tf *TorrentFile, peerId [PeerIdLen]byte) ([]string, err
 		baseUrl, err := url.Parse(u)
 		if err != nil {
 			fmt.Println("http announce url parse error: " + u)
-			return nil, err
+			continue
 		}
 		params := url.Values{
 			"info_hash":  []string{string(tf.InfoSHA[:])},
@@ -70,54 +70,65 @@ func buildHTTPTrackerUrl(tf *TorrentFile, peerId [PeerIdLen]byte) ([]string, err
 	return res, nil
 }
 
-func buildPeerInfo(peers []byte) []PeerInfo {
+func buildPeerInfo(peers []byte, peerChan chan *PeerInfo) {
 	if len(peers)%PeerLen != 0 {
 		fmt.Println("received malformed peers")
 	}
 	num := len(peers) / PeerLen
-	peerInfo := make([]PeerInfo, num)
 	for i := 0; i < num; i++ {
 		offset := i * PeerLen
-		peerInfo[i].Ip = peers[offset : offset+IPLen]
-		peerInfo[i].Port = binary.BigEndian.Uint16(peers[offset+IPLen : offset+PeerLen])
+		peerChan <- &PeerInfo{
+			Ip:   peers[offset : offset+IPLen],
+			Port: binary.BigEndian.Uint16(peers[offset+IPLen : offset+PeerLen]),
+		}
 	}
-	return peerInfo
 }
 
-func RetrievePeers(tf *TorrentFile, peerId [PeerIdLen]byte) []PeerInfo {
+func RetrievePeers(tf *TorrentFile, peerId [PeerIdLen]byte, peerMap *map[string]*PeerInfo) {
 	httpTrackerUrls, err := buildHTTPTrackerUrl(tf, peerId)
 	if err != nil {
-		fmt.Println("build tracker url error: " + err.Error())
-		return nil
+		fmt.Println("build http tracker urls error: " + err.Error())
+		return
 	}
 
-	httpPeers := getPeersFromHTTPTrackers(httpTrackerUrls)
+	peerChan := make(chan *PeerInfo)
+	getPeersFromHTTPTrackers(httpTrackerUrls, peerChan)
 
-	return httpPeers
+	for {
+		select {
+		case p := <-peerChan:
+			if _, ok := (*peerMap)[p.Ip.String()]; !ok {
+				(*peerMap)[p.Ip.String()] = p
+				fmt.Printf("peer [ip: %s, port: %d]\n", p.Ip, p.Port)
+			}
+		case <-time.After(3 * time.Second):
+			return
+		}
+	}
 }
 
-func getPeersFromHTTPTrackers(trackerUrls []string) []PeerInfo {
-	var peerInfos []PeerInfo
+func getPeersFromHTTPTrackers(trackerUrls []string, peerChan chan *PeerInfo) {
 	for _, trackerUrl := range trackerUrls {
-		cli := &http.Client{Timeout: time.Duration(RetrievePeersTimeout) * time.Second}
-		resp, err := cli.Get(trackerUrl)
-		if err != nil {
-			fmt.Printf("failed to connect to tracker: %s error: %s\n", trackerUrl, err.Error())
-			continue
-		}
+		go func(trackerUrl string) {
+			cli := &http.Client{Timeout: time.Duration(RetrievePeersTimeout) * time.Second}
+			resp, err := cli.Get(trackerUrl)
+			if err != nil {
+				fmt.Printf("failed to connect to tracker: %s error: %s\n", trackerUrl, err.Error())
+				return
+			}
 
-		trackerResp := new(TrackerResp)
-		err = bencode.Unmarshal(resp.Body, trackerResp)
-		resp.Body.Close()
-		if err != nil {
-			fmt.Printf("tracker %s response error: %s\n", trackerUrl, err.Error())
-			continue
-		}
+			trackerResp := new(TrackerResp)
+			err = bencode.Unmarshal(resp.Body, trackerResp)
+			resp.Body.Close()
+			if err != nil {
+				fmt.Printf("tracker %s response error: %s\n", trackerUrl, err.Error())
+				return
+			}
 
-		peerInfos = append(peerInfos, buildPeerInfo([]byte(trackerResp.Peers))...)
+			buildPeerInfo([]byte(trackerResp.Peers), peerChan)
+		}(trackerUrl)
+
 	}
-
-	return peerInfos
 }
 
 func isHTTPTrackerUrl(url string) bool {

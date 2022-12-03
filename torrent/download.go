@@ -10,7 +10,7 @@ import (
 
 type TorrentTask struct {
 	PeerId   [PeerIdLen]byte
-	PeerList []PeerInfo
+	PeerMap  map[string]*PeerInfo
 	InfoSHA  [ShaLen]byte
 	FileName string
 	FileLen  int
@@ -119,7 +119,7 @@ func checkPieceIntegrity(task *pieceTask, res *pieceResult) bool {
 	return true
 }
 
-func (t *TorrentTask) peerRoutine(peer PeerInfo, taskQueue chan *pieceTask, resultQueue chan *pieceResult) {
+func (t *TorrentTask) peerRoutine(peer *PeerInfo, taskQueue chan *pieceTask, resultQueue chan *pieceResult) {
 	// set up conn with peer
 	peerConn, err := NewConn(peer, t.InfoSHA, t.PeerId)
 	if err != nil {
@@ -180,7 +180,7 @@ func (t *TorrentTask) Download() ([]byte, error) {
 		}
 	}
 	// init goroutines for each peer
-	for _, peer := range t.PeerList {
+	for _, peer := range t.PeerMap {
 		go t.peerRoutine(peer, taskQueue, resultQueue)
 	}
 	// collect piece result

@@ -17,7 +17,7 @@ func TestPeer(t *testing.T) {
 	var peerId [PeerIdLen]byte
 	_, _ = rand.Read(peerId[:])
 
-	conn, err := NewConn(peer, tf.InfoSHA, peerId)
+	conn, err := NewConn(&peer, tf.InfoSHA, peerId)
 	if err != nil {
 		t.Error(err.Error())
 	}

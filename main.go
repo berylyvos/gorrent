@@ -6,8 +6,8 @@ import (
 )
 
 func main() {
-	inPath := "./testfile/debian-iso.torrent"
-	outPath := "./debian.iso"
+	inPath := "./testfile/nope.torrent"
+	outPath := "./nope"
 	// open and parse torrent file
 	tf, err := torrent.Open(inPath)
 	if err != nil {

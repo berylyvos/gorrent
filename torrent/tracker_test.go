@@ -2,7 +2,6 @@ package torrent
 
 import (
 	"crypto/rand"
-	"fmt"
 	"testing"
 )
 
@@ -12,8 +11,6 @@ func TestRetrievePeers(t *testing.T) {
 	var peerId [PeerIdLen]byte
 	_, _ = rand.Read(peerId[:])
 
-	peers := RetrievePeers(tf, peerId)
-	for i, p := range peers {
-		fmt.Printf("peer %d, Ip: %s, Port: %d\n", i, p.Ip, p.Port)
-	}
+	peerMap := make(map[string]*PeerInfo)
+	RetrievePeers(tf, peerId, &peerMap)
 }

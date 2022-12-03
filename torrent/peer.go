@@ -51,7 +51,7 @@ type PeerConn struct {
 	net.Conn
 	Choked   bool
 	BitField Bitfield
-	peer     PeerInfo
+	peer     *PeerInfo
 	peerID   [PeerIdLen]byte
 	infoSHA  [ShaLen]byte
 }
@@ -142,7 +142,7 @@ func (c *PeerConn) WriteMsg(m *PeerMsg) (int, error) {
 	return c.Write(buf)
 }
 
-func NewConn(peer PeerInfo, infoSHA [ShaLen]byte, peerId [PeerIdLen]byte) (*PeerConn, error) {
+func NewConn(peer *PeerInfo, infoSHA [ShaLen]byte, peerId [PeerIdLen]byte) (*PeerConn, error) {
 	// setup tcp connection
 	addr := net.JoinHostPort(peer.Ip.String(), strconv.Itoa(int(peer.Port)))
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)

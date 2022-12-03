@@ -87,20 +87,22 @@ func ParseFile(r io.Reader) (*TorrentFile, error) {
 	return tf, nil
 }
 
-func (tf *TorrentFile) BuildTorrentTask(path string) (*TorrentTask, error) {
+func (tf *TorrentFile) BuildTorrentTask() (*TorrentTask, error) {
 	// generate random peerId
 	var peerId [PeerIdLen]byte
 	_, _ = rand.Read(peerId[:])
 
 	// retrieve peers from tracker
-	peers := RetrievePeers(tf, peerId)
-	if len(peers) == 0 {
+	peerMap := make(map[string]*PeerInfo)
+	RetrievePeers(tf, peerId, &peerMap)
+	if len(peerMap) == 0 {
 		return nil, fmt.Errorf("there is no peers")
 	}
+	fmt.Printf("we got %d peers in total\n", len(peerMap))
 
 	return &TorrentTask{
 		PeerId:   peerId,
-		PeerList: peers,
+		PeerMap:  peerMap,
 		InfoSHA:  tf.InfoSHA,
 		FileName: tf.FileName,
 		FileLen:  tf.FileLen,
@@ -111,7 +113,7 @@ func (tf *TorrentFile) BuildTorrentTask(path string) (*TorrentTask, error) {
 
 func (tf *TorrentFile) DownloadToFile(path string) error {
 	// build torrent task
-	task, err := tf.BuildTorrentTask(path)
+	task, err := tf.BuildTorrentTask()
 	if err != nil {
 		return fmt.Errorf("build torrent task error: %v", err.Error())
 	}
