@@ -2,12 +2,14 @@ package torrent
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"github.com/berylyvos/gorrent/bencode"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -17,7 +19,7 @@ const (
 	IPLen                int = 4
 	PortLen              int = 2
 	PeerLen                  = IPLen + PortLen
-	RetrievePeersTimeout int = 15
+	RetrievePeersTimeout int = 1
 )
 
 type PeerInfo struct {
@@ -30,25 +32,42 @@ type TrackerResp struct {
 	Peers    string `bencode:"peers"`
 }
 
-func buildTrackerUrl(tf *TorrentFile, peerId [PeerIdLen]byte) (string, error) {
-	baseUrl, err := url.Parse(tf.Announce)
-	if err != nil {
-		fmt.Println("announce url parse error: " + tf.Announce)
-		return "", err
+func buildHTTPTrackerUrl(tf *TorrentFile, peerId [PeerIdLen]byte) ([]string, error) {
+	var urls []string
+	if len(tf.Announce) != 0 && isHTTPTrackerUrl(tf.Announce) {
+		urls = append(urls, tf.Announce)
+	}
+	if len(tf.AnnounceList) != 0 {
+		for _, an := range tf.AnnounceList {
+			if isHTTPTrackerUrl(an) {
+				urls = append(urls, an)
+			}
+		}
+	}
+	if len(urls) == 0 {
+		return nil, errors.New("got no http announce url")
 	}
 
-	params := url.Values{
-		"info_hash":  []string{string(tf.InfoSHA[:])},
-		"peer_id":    []string{string(peerId[:])},
-		"port":       []string{strconv.Itoa(PeerPort)},
-		"uploaded":   []string{"0"},
-		"downloaded": []string{"0"},
-		"compact":    []string{"1"},
-		"left":       []string{strconv.Itoa(tf.FileLen)},
+	var res []string
+	for _, u := range urls {
+		baseUrl, err := url.Parse(u)
+		if err != nil {
+			fmt.Println("http announce url parse error: " + u)
+			return nil, err
+		}
+		params := url.Values{
+			"info_hash":  []string{string(tf.InfoSHA[:])},
+			"peer_id":    []string{string(peerId[:])},
+			"port":       []string{strconv.Itoa(PeerPort)},
+			"uploaded":   []string{"0"},
+			"downloaded": []string{"0"},
+			"compact":    []string{"1"},
+			"left":       []string{strconv.Itoa(tf.FileLen)},
+		}
+		baseUrl.RawQuery = params.Encode()
+		res = append(res, baseUrl.String())
 	}
-
-	baseUrl.RawQuery = params.Encode()
-	return baseUrl.String(), nil
+	return res, nil
 }
 
 func buildPeerInfo(peers []byte) []PeerInfo {
@@ -66,26 +85,45 @@ func buildPeerInfo(peers []byte) []PeerInfo {
 }
 
 func RetrievePeers(tf *TorrentFile, peerId [PeerIdLen]byte) []PeerInfo {
-	trackerUrl, err := buildTrackerUrl(tf, peerId)
+	httpTrackerUrls, err := buildHTTPTrackerUrl(tf, peerId)
 	if err != nil {
 		fmt.Println("build tracker url error: " + err.Error())
 		return nil
 	}
 
-	cli := &http.Client{Timeout: time.Duration(RetrievePeersTimeout) * time.Second}
-	resp, err := cli.Get(trackerUrl)
-	if err != nil {
-		fmt.Println("failed to connect to tracker: " + err.Error())
-		return nil
-	}
-	defer resp.Body.Close()
+	httpPeers := getPeersFromHTTPTrackers(httpTrackerUrls)
 
-	trackerResp := new(TrackerResp)
-	err = bencode.Unmarshal(resp.Body, trackerResp)
-	if err != nil {
-		fmt.Println("tracker response error: " + err.Error())
-		return nil
+	return httpPeers
+}
+
+func getPeersFromHTTPTrackers(trackerUrls []string) []PeerInfo {
+	var peerInfos []PeerInfo
+	for _, trackerUrl := range trackerUrls {
+		cli := &http.Client{Timeout: time.Duration(RetrievePeersTimeout) * time.Second}
+		resp, err := cli.Get(trackerUrl)
+		if err != nil {
+			fmt.Printf("failed to connect to tracker: %s error: %s\n", trackerUrl, err.Error())
+			continue
+		}
+
+		trackerResp := new(TrackerResp)
+		err = bencode.Unmarshal(resp.Body, trackerResp)
+		resp.Body.Close()
+		if err != nil {
+			fmt.Printf("tracker %s response error: %s\n", trackerUrl, err.Error())
+			continue
+		}
+
+		peerInfos = append(peerInfos, buildPeerInfo([]byte(trackerResp.Peers))...)
 	}
 
-	return buildPeerInfo([]byte(trackerResp.Peers))
+	return peerInfos
+}
+
+func isHTTPTrackerUrl(url string) bool {
+	return strings.HasPrefix(url, "http")
+}
+
+func isUDPTrackerUrl(url string) bool {
+	return strings.HasPrefix(url, "udp")
 }
