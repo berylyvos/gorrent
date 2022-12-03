@@ -25,8 +25,10 @@ type rawInfo struct {
 }
 
 type rawInfoMulti struct {
-	Files []file `bencode:"files"`
-	rawInfo
+	Files       []file `bencode:"files"`
+	Name        string `bencode:"name"`
+	PieceLength int    `bencode:"piece length"`
+	Pieces      string `bencode:"pieces"`
 }
 
 type rawFile struct {
