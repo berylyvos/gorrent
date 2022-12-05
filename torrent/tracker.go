@@ -144,6 +144,7 @@ func RetrievePeers(tf *TorrentFile, peerId [PeerIdLen]byte, peerMap *map[string]
 				fmt.Printf("peer [ip: %s, port: %d]\n", p.Ip, p.Port)
 			}
 		case <-time.After(time.Duration(RetrievePeersTimeout) * time.Second):
+			close(peerChan)
 			return
 		}
 	}
