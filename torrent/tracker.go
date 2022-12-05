@@ -1,11 +1,11 @@
 package torrent
 
 import (
-	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"github.com/berylyvos/gorrent/bencode"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -38,7 +38,7 @@ type PeerInfo struct {
 	Port uint16
 }
 
-type TrackerResp struct {
+type HTTPTrackerResp struct {
 	Interval int    `bencode:"interval"`
 	Peers    string `bencode:"peers"`
 }
@@ -134,7 +134,7 @@ func RetrievePeers(tf *TorrentFile, peerId [PeerIdLen]byte, peerMap *map[string]
 
 	peerChan := make(chan *PeerInfo)
 	getPeersFromHTTPTrackers(httpTrackerUrls, peerChan)
-	getPeersFromUDPTrackers(tf, udpTrackers, peerChan)
+	getPeersFromUDPTrackers(tf, udpTrackers, peerId, peerChan)
 
 	for {
 		select {
@@ -143,7 +143,7 @@ func RetrievePeers(tf *TorrentFile, peerId [PeerIdLen]byte, peerMap *map[string]
 				(*peerMap)[p.Ip.String()] = p
 				fmt.Printf("peer [ip: %s, port: %d]\n", p.Ip, p.Port)
 			}
-		case <-time.After(3 * time.Second):
+		case <-time.After(time.Duration(RetrievePeersTimeout) * time.Second):
 			return
 		}
 	}
@@ -159,7 +159,7 @@ func getPeersFromHTTPTrackers(trackerUrls []string, peerChan chan *PeerInfo) {
 				return
 			}
 
-			trackerResp := new(TrackerResp)
+			trackerResp := new(HTTPTrackerResp)
 			err = bencode.Unmarshal(resp.Body, trackerResp)
 			resp.Body.Close()
 			if err != nil {
@@ -172,13 +172,13 @@ func getPeersFromHTTPTrackers(trackerUrls []string, peerChan chan *PeerInfo) {
 	}
 }
 
-func getPeersFromUDPTrackers(tf *TorrentFile, udpTrackers []UDPTracker, peerChan chan *PeerInfo) {
+func getPeersFromUDPTrackers(tf *TorrentFile, udpTrackers []UDPTracker, peerId [PeerIdLen]byte, peerChan chan *PeerInfo) {
 	for _, tr := range udpTrackers {
-		go connect(tf, tr, peerChan)
+		go connect(tf, tr, peerId, peerChan)
 	}
 }
 
-func connect(tf *TorrentFile, tracker UDPTracker, peerChan chan *PeerInfo) {
+func connect(tf *TorrentFile, tracker UDPTracker, peerId [PeerIdLen]byte, peerChan chan *PeerInfo) {
 	socket, err := net.DialUDP("udp", nil, &net.UDPAddr{
 		IP:   tracker.IP,
 		Port: tracker.Port,
@@ -195,18 +195,17 @@ func connect(tf *TorrentFile, tracker UDPTracker, peerChan chan *PeerInfo) {
 	// 8       32-bit integer  action          0 // connect
 	// 12      32-bit integer  transaction_id
 	// 16
-	transactionID := 0x4c4a68
 	payload := make([]byte, 16)
 	binary.BigEndian.PutUint64(payload[0:8], uint64(UDPTrackerProtocolID))
 	binary.BigEndian.PutUint32(payload[8:12], uint32(ActionConnect))
-	binary.BigEndian.PutUint32(payload[12:16], uint32(transactionID))
+	binary.BigEndian.PutUint32(payload[12:16], uint32(genTransactionID()))
 	_, err = socket.Write(payload)
 	if err != nil {
 		fmt.Printf("%v connect write payload error: %v\n", tracker.Host, err)
 		return
 	}
 	data := make([]byte, 16)
-	_ = socket.SetReadDeadline(time.Now().Add(time.Second * 15))
+	_ = socket.SetReadDeadline(time.Now().Add(time.Duration(RetrievePeersTimeout) * time.Second))
 	n, remoteAddr, err := socket.ReadFromUDP(data)
 	if err != nil {
 		fmt.Printf("%v connect read from udp error: %v\n", tracker.Host, err)
@@ -223,10 +222,10 @@ func connect(tf *TorrentFile, tracker UDPTracker, peerChan chan *PeerInfo) {
 	}
 
 	fmt.Printf("connect recv:%v addr:%v count:%v\n", data[:n], remoteAddr, n)
-	announce(tf, binary.BigEndian.Uint64(data[8:16]), tracker, peerChan)
+	announce(tf, binary.BigEndian.Uint64(data[8:16]), peerId, tracker, peerChan)
 }
 
-func announce(tf *TorrentFile, connId uint64, tracker UDPTracker, peerChan chan *PeerInfo) {
+func announce(tf *TorrentFile, connId uint64, peerId [PeerIdLen]byte, tracker UDPTracker, peerChan chan *PeerInfo) {
 	socket, err := net.DialUDP("udp", nil, &net.UDPAddr{
 		IP:   tracker.IP,
 		Port: tracker.Port,
@@ -256,15 +255,12 @@ func announce(tf *TorrentFile, connId uint64, tracker UDPTracker, peerChan chan 
 	// 92      32-bit integer  num_want        -1 // default
 	// 96      16-bit integer  port
 	// 98
-	transactionID := 0x4c4a68
-	key := 0x1a7e3d
+	key := 0x1a7e3d22
 	numWant := -1
-	var peerId [20]byte
-	_, _ = rand.Read(peerId[:])
 	payload := make([]byte, 98)
 	binary.BigEndian.PutUint64(payload[0:8], connId)
 	binary.BigEndian.PutUint32(payload[8:12], uint32(ActionAnnounce))
-	binary.BigEndian.PutUint32(payload[12:16], uint32(transactionID))
+	binary.BigEndian.PutUint32(payload[12:16], uint32(genTransactionID()))
 	copy(payload[16:36], tf.InfoSHA[:])
 	copy(payload[36:56], peerId[:])
 	binary.BigEndian.PutUint64(payload[56:64], 0)
@@ -291,7 +287,7 @@ func announce(tf *TorrentFile, connId uint64, tracker UDPTracker, peerChan chan 
 	// 24 + 6 * n  16-bit integer  TCP port
 	// 20 + 6 * N
 	data := make([]byte, 512)
-	_ = socket.SetReadDeadline(time.Now().Add(time.Second * 15))
+	_ = socket.SetReadDeadline(time.Now().Add(time.Duration(RetrievePeersTimeout) * time.Second))
 	n, remoteAddr, err := socket.ReadFromUDP(data)
 	if err != nil {
 		fmt.Printf("%v announce read from udp error: %v\n", tracker.Host, err)
@@ -304,7 +300,8 @@ func announce(tf *TorrentFile, connId uint64, tracker UDPTracker, peerChan chan 
 	fmt.Printf("announce recv:%v addr:%v count:%v\n", data[:n], remoteAddr, n)
 
 	// peers info
-	for i := 0; i < 50; i++ {
+	peerNum := (len(data) - 20) / 6
+	for i := 0; i < peerNum; i++ {
 		ip := make(net.IP, 4)
 		binary.BigEndian.PutUint32(ip, binary.BigEndian.Uint32(data[20+6*i:24+6*i]))
 		port := binary.BigEndian.Uint16(data[24+6*i : 26+6*i])
@@ -324,4 +321,8 @@ func isHTTPTrackerUrl(url string) bool {
 
 func isUDPTrackerUrl(url string) bool {
 	return strings.HasPrefix(url, "udp")
+}
+
+func genTransactionID() int32 {
+	return rand.Int31n(214748)
 }
