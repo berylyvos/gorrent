@@ -20,7 +20,7 @@ const (
 	IPLen                int = 4
 	PortLen              int = 2
 	PeerLen                  = IPLen + PortLen
-	RetrievePeersTimeout int = 3
+	RetrievePeersTimeout int = 5
 )
 
 const UDPTrackerProtocolID = 0x41727101980
@@ -286,7 +286,7 @@ func announce(tf *TorrentFile, connId uint64, peerId [PeerIdLen]byte, tracker UD
 	// 20 + 6 * n  32-bit integer  IP address
 	// 24 + 6 * n  16-bit integer  TCP port
 	// 20 + 6 * N
-	data := make([]byte, 512)
+	data := make([]byte, 1220) // 20 + 200 * 6
 	_ = socket.SetReadDeadline(time.Now().Add(time.Duration(RetrievePeersTimeout) * time.Second))
 	n, remoteAddr, err := socket.ReadFromUDP(data)
 	if err != nil {
