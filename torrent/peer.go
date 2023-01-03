@@ -106,7 +106,7 @@ func (c *PeerConn) ReadMsg() (*PeerMsg, error) {
 	lenBuf := make([]byte, LenBytes)
 	_, err := io.ReadFull(c, lenBuf)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read message length error: %v", err)
 	}
 	length := binary.BigEndian.Uint32(lenBuf)
 	// keep-alive msg
@@ -118,7 +118,7 @@ func (c *PeerConn) ReadMsg() (*PeerMsg, error) {
 	msgBuf := make([]byte, length)
 	_, err = io.ReadFull(c, msgBuf)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read message body error: %v", err)
 	}
 
 	return &PeerMsg{
