@@ -1,10 +1,10 @@
 # gorrent
 
 ## Features
-- Multiple files torrents download
-- Supports UDP & HTTP trackers
-- ~~Supports uploading pieces~~
-- ~~Supports DHT, PeX and Magnet links~~
+- Single-file torrent download
+- UDP & HTTP trackers
+- ~~Uploading pieces~~
+- ~~DHT, PeX and Magnet links~~
 
 ## How it Works
 1. Peers discovery
